@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#072A66">
+<title>UHDFC Stadium Run</title>
+<meta name="description" content="울산 HD FC 선수로 공을 몰고 달리며 수비를 제치는 달리기 게임.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="UHDFC Stadium Run">
+<meta property="og:description" content="울산 HD FC 선수로 공을 몰고 달리며 수비를 제치는 달리기 게임.">
+<meta property="og:image" content="https://robinkim0221.github.io/uhdfc-stadium-run/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<!-- 글꼴이 첫 화면을 막지 않는다: Teko(숫자)와 Black Han Sans(제목)는 같은 서버에서 받고, Pretendard(한글)는 CDN 에서 뒤늦게 받아 끼운다.
+     스타일시트를 그냥 걸면 CDN 이 응답할 때까지 화면이 비어 있다 -->
+<link rel="preload" as="font" type="font/woff2" href="fonts/teko-600-latin.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="fonts/black-han-sans-ui.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="fonts/barlow-condensed-700-latin.woff2" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" aria-label="경기장"></canvas>
+  <div id="ui"></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

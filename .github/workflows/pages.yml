@@ -1,0 +1,37 @@
+# GitHub Pages 배포: 정적 파일을 그대로 올린다
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # 이 저장소가 아닌 곳에서 배포될 때는 검색에 잡히지 않게 하고, 링크 미리보기 그림은 그 주소에 올라간 것을 쓴다
+      - if: github.repository != 'ROBINKIM0221/uhdfc-stadium-run'
+        run: |
+          sed -i -e 's#<head>#<head><meta name="robots" content="noindex">#' -e "s#/uhdfc-stadium-run/#/${{ github.event.repository.name }}/#" index.html
+      # 올릴 때마다 코드 주소에 버전(?v=커밋)을 붙인다: 브라우저가 들고 있는 예전 파일과 새 파일이 섞이지 않는다
+      - run: |
+          V=${GITHUB_SHA::7}
+          find js -name '*.js' ! -path 'js/vendor/*' -exec sed -i -E "s#((from |import\(|import )['\"]\.\.?/[^'\"]+\.js)(['\"])#\1?v=$V\3#g" {} +
+          sed -i -E "s#(src=\"js/main\.js)\"#\1?v=$V\"#; s#(href=\"css/style\.css)\"#\1?v=$V\"#" index.html
+          grep -c "?v=$V" index.html js/main.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

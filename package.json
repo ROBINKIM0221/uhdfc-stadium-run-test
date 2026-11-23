@@ -1,0 +1,9 @@
+{
+  "name": "uhdfc-stadium-run",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "start": "node tools/serve.cjs 5173"
+  }
+}
