@@ -78,6 +78,26 @@ export function flatHead(no, headR, big = false) {
   return { geometry, material };
 }
 
+// 가까이서 보는 사진 머리: 머리 타원만큼 앞으로 볼록한 판에 사진을 앞에서 비추듯 입히고 빛을 받게 한다.
+// 카메라 쪽으로 돌리지 않고 머리 뼈와 같이 돌린다(placeFace 의 rigid). 사진이 아직 안 왔으면 null
+const rounds = new Map();   // 선수 번호 → { geometry, material }
+export function roundHead(no, headR) {
+  const flat = flatHead(no, headR, true);
+  if (!flat) return null;
+  let r = rounds.get(no);
+  if (!r) {
+    const S = FACE.side * FACE.slim * headR, R = headR * FACE.slim, cy = headR * FACE.rise;
+    const geometry = new THREE.PlaneGeometry(S, S, 32, 32).translate(0, cy + (0.5 - FACE.mid) * S, 0), p = geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const u = p.getX(i) / R, t = (p.getY(i) - cy) / (R * FACE.tall);
+      p.setZ(i, R * FACE.deep * Math.sqrt(Math.max(0, 1 - u * u - t * t)));
+    }
+    geometry.computeVertexNormals();
+    rounds.set(no, r = { geometry, material: new THREE.MeshLambertMaterial({ map: flat.material.map, alphaTest: 0.5 }) });
+  }
+  return r;
+}
+
 // 납작한 머리는 빛을 받지 않는다. 시간대가 어두워지면 이 값(0..1)으로 같이 낮춘다
 export function shadeFlats(v) {
   level = v;

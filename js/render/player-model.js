@@ -66,7 +66,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, pr.rgb, pr.a * onBack);`;
   return m;
 }
 
-const v = new THREE.Vector3(), w = new THREE.Vector3(), s3 = new THREE.Vector3(), q = new THREE.Quaternion(), qp = new THREE.Quaternion();
+const v = new THREE.Vector3(), w = new THREE.Vector3(), s3 = new THREE.Vector3(), q = new THREE.Quaternion(), qp = new THREE.Quaternion(), qt = new THREE.Quaternion();
 const m4 = new THREE.Matrix4();
 const TURN = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);   // 모델은 +Z 를, 관절 몸은 -Z 를 본다
 const ratio = (hex, from) => { const c = new THREE.Color(hex); return c.setRGB(Math.min(1.6, c.r / from.r), Math.min(1.6, c.g / from.g), Math.min(1.6, c.b / from.b)); };
@@ -109,6 +109,8 @@ export function createBody(loaded, { plate = true } = {}) {
   const baseHip = hips.getWorldPosition(v).y;   // 땅에서 엉덩이 관절까지(m), 기본 체격일 때
   let hipHeight = baseHip;
   root.rotation.y = 0;
+  root.updateMatrixWorld(true);
+  const faceRest = head.getWorldQuaternion(new THREE.Quaternion()).invert();   // 머리 뼈 → 앞(+Z)을 보는 얼굴. 쉬는 자세에서 잰다
 
   // 사진 머리: 장면에 따로 두고 머리 뼈의 자리와 방향을 따라간다. 모델은 cm 로 줄여 놓아서 그 밑에 달면 같이 작아진다
   const anchor = new THREE.Object3D(), face = new THREE.Mesh();
@@ -195,12 +197,20 @@ export function createBody(loaded, { plate = true } = {}) {
       if (flat) { face.geometry = flat.geometry; face.material = flat.material; }
       head.scale.setScalar(flat ? 1e-3 : 1);
     },
-    // 사진 머리를 머리 자리에 놓고 카메라 쪽으로 돌린다. follow 뒤에 부른다
-    placeFace(camera) {
+    // 사진 머리를 머리 자리에 놓고 카메라 쪽으로 돌린다. rigid 면 돌리지 않고 머리 뼈와 같이 돈다. follow 뒤에 부른다
+    placeFace(camera, rigid = false) {
       if (!face.visible) return;
       head.getWorldPosition(anchor.position); head.getWorldQuaternion(anchor.quaternion);
-      anchor.updateMatrixWorld(true);
-      faceCamera(face, camera);
+      if (rigid) face.quaternion.copy(faceRest); else { anchor.updateMatrixWorld(true); faceCamera(face, camera); }
+    },
+    // 머리를 세상의 한 점(point) 쪽으로 amount(0..1)만큼 돌린다. mocap 뒤, placeFace 앞에 부른다
+    look(point, amount) {
+      root.updateMatrixWorld(true);
+      head.getWorldQuaternion(q);
+      v.set(0, 0, 1).applyQuaternion(qp.copy(q).multiply(faceRest));
+      w.subVectors(point, head.getWorldPosition(w)).normalize();
+      q.premultiply(qt.identity().slerp(qp.setFromUnitVectors(v, w), amount));
+      head.quaternion.copy(head.parent.getWorldQuaternion(qp).invert().multiply(q));
     },
     dispose() { for (const m of mats) m.dispose(); if (print) print.texture.dispose(); },
   };
