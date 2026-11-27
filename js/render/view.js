@@ -11,6 +11,7 @@ import * as defenders from './defenders.js';
 import * as pickups from './pickups.js';
 import { loadFace } from './heads.js';
 import { usePainter } from './kit-paint.js';
+import { createWalkout } from './walkout.js';
 
 // 품질 단계와 화면 배율 상한. 그림자 지도 크기는 daynight, 관절 몸 수는 defenders 가 단계 이름으로 정한다
 const TIERS = ['low', 'mid', 'high'];
@@ -39,6 +40,7 @@ export function createView(canvas, { quality = 'auto', look = {} } = {}) {
   };
   // daynight 와 fx 가 앞에 와야 한다: 뒤 조각들이 ctx.time 과 ctx.blob 을 쓴다
   const pieces = [daynight, fx, stadium, hero, defenders, pickups].map(m => m.create(ctx));
+  const walkout = createWalkout(renderer);   // 뽑기 때 선수가 걸어 나오는 장면. 도는 동안은 게임 장면 대신 그린다
   let shown = null;
   let over = 0;        // 결과 화면으로 넘어온 정도(0..1). 카메라가 고개를 숙이는 데 쓴다
   let shakeAt = -1e9;  // 화면이 흔들리기 시작한 시각
@@ -76,7 +78,7 @@ export function createView(canvas, { quality = 'auto', look = {} } = {}) {
 
   resize();
   const view = {
-    resize, reset,
+    resize, reset, walkout,
     // 달리는 장면(trial)을 한 번 그려 보고 지금 장면(back)으로 돌아온다. 선수들의 옷 그림과 그늘·재질의 셰이더가 이때 만들어져서,
     // 첫 판을 시작하는 순간에 한꺼번에 만드느라 화면이 멈추지 않는다. 같은 프레임 안에서 다시 그리므로 화면에는 보이지 않는다
     warm(trial, back) {
@@ -103,6 +105,7 @@ export function createView(canvas, { quality = 'auto', look = {} } = {}) {
     // alpha: 앞 틱과 지금 틱 사이 어디를 그릴지(0..1), dt: 지난 프레임부터 흐른 시간(초)
     frame(run, alpha, dt) {
       if (auto) measure(dt);
+      if (walkout.active) { walkout.frame(dt, canvas.clientWidth, canvas.clientHeight); return; }
       // 달리는 동안은 규칙의 시계를 따라가 같은 틱이면 같은 그림이 나온다
       ctx.now = ctx.mode === 'run' && run.alive ? (run.tick - 1 + alpha) * TICK : ctx.now + dt;
       // 카메라를 먼저 놓는다: 납작한 머리가 이번 프레임의 카메라를 보고 돈다

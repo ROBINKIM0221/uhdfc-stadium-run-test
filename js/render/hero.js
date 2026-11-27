@@ -53,9 +53,9 @@ export function create(ctx) {
   ctx.scene.add(ball);
   ctx.ball = ball;         // 효과 조각이 공의 자리를 읽는다
 
-  // 아이템 동안 공이 불꽃볼이 된다: 효과 조각이 불꽃을 피울 자리(두 발, 마지막이 공)와 세기(heat), 그리고 공을 따라가며 둘레를 비추는 주황 빛.
-  // 빛은 처음부터 두어야 한다. 빛의 수가 바뀌면 모든 재질의 셰이더를 다시 만드느라 화면이 멈춘다
-  const FLAMES = ['anL', 'anR'];
+  // 아이템 동안 몸이 불타고 공은 불꽃볼이 된다: 효과 조각이 불꽃을 피울 자리(몸의 관절들, 마지막이 공)와 세기(heat),
+  // 그리고 공을 따라가며 둘레를 비추는 주황 빛. 빛은 처음부터 두어야 한다. 빛의 수가 바뀌면 모든 재질의 셰이더를 다시 만드느라 화면이 멈춘다
+  const FLAMES = ['hips', 'spine', 'shL', 'shR', 'elL', 'elR', 'knL', 'knR', 'anL', 'anR'];   // 둘째(spine)가 몸통 가운데다
   const burn = { heat: 0, pts: Array.from({ length: FLAMES.length + 1 }, () => new THREE.Vector3()) };
   ctx.burn = burn;
   const fire = new THREE.PointLight('#ff7a1a', 0, 9, 2);

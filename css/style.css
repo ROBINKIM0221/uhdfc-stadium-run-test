@@ -249,7 +249,19 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 .draw[data-reveal] .acts { margin-top: auto; }
 .draw[data-reveal][data-busy] .acts { visibility: hidden; }
 .draw[data-stage="done"] .acts { animation: rise .35s ease-out both; }
-@media (prefers-reduced-motion: reduce) { .draw[data-reveal] .rays, .draw[data-reveal] .sparks, .draw[data-stage="burst"]::after { display: none; } .draw[data-reveal] .card { animation: none; } }
+/* 선수가 걸어 나오는 동안: 뒤의 장면이 보이게 바탕을 비우고 둘레만 어둡게. 카드는 조명이 켜진 뒤 아래에서 작게 올라온다 */
+#ui[data-walk] .s-sheet { background: none; }
+#ui[data-walk] .s-sheet header { visibility: hidden; }
+.draw[data-walk] { background: radial-gradient(ellipse at 50% 42%, rgba(1, 8, 28, 0) 0 38%, rgba(1, 8, 28, .72) 100%); }
+.draw[data-walk] .clue { margin-top: 0; }
+.draw[data-walk] .rays { opacity: 0; }
+.draw[data-walk][data-stage="done"] .rays { opacity: .45; }
+.draw[data-walk] .card { visibility: hidden; height: min(30vh, 230px); height: min(30dvh, 230px); margin-top: auto; animation: none; }
+.draw[data-walk][data-stage="done"] .card { visibility: visible; animation: cardIn .45s cubic-bezier(.2, 1.2, .4, 1) both; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(70px) scale(.7); } }
+.draw[data-walk] .acts { min-height: 0; margin-top: 12px; }
+@media (prefers-reduced-motion: reduce) { .draw[data-reveal] .rays, .draw[data-reveal] .sparks, .draw[data-stage="burst"]::after { display: none; } .draw[data-reveal] .card { animation: none; } .clue.hit { animation: appear .3s ease-out both; } }
+@keyframes appear { from { opacity: 0; } }
 
 .s-nogl { justify-content: center; font: 700 18px/1.5 var(--ui); text-align: center; word-break: keep-all; }
 

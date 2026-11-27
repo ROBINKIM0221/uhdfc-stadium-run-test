@@ -69,50 +69,56 @@ function paint(c, layer, kit, no, name) {
     g.textAlign = 'center';
   }
 
-  // 이름: 굵은 고딕, 글자 사이를 넓게
+  // 이름: 굵은 고딕을 한 번 더 굵게, 글자 사이는 조금만 띄운다
   if (name) {
     let size = cm(6.2);
     g.font = NAME(size);
-    const chars = [...name], gap = () => size * 0.42, width = () => chars.reduce((s, ch) => s + g.measureText(ch).width, 0) + gap() * (chars.length - 1);
-    if (width() > cm(26)) { size *= cm(26) / width(); g.font = NAME(size); }
+    const chars = [...name], gap = () => size * 0.14, width = () => chars.reduce((s, ch) => s + g.measureText(ch).width, 0) + gap() * (chars.length - 1);
+    if (width() > cm(24)) { size *= cm(24) / width(); g.font = NAME(size); }
     let x = (W - width()) / 2;
-    g.fillStyle = ink; g.textBaseline = 'middle'; g.textAlign = 'left';
-    for (const ch of chars) { g.fillText(ch, x, cy(139.5)); x += g.measureText(ch).width + gap(); }
+    g.fillStyle = g.strokeStyle = ink; g.lineWidth = size * 0.06; g.lineJoin = 'round'; g.textBaseline = 'middle'; g.textAlign = 'left';
+    for (const ch of chars) { g.fillText(ch, x, cy(139.5)); g.strokeText(ch, x, cy(139.5)); x += g.measureText(ch).width + gap(); }
     g.textAlign = 'center';
   }
 
-  // 등번호: 숫자 높이 26cm. 숫자와 무늬·엠블럼을 따로 그린 뒤 테두리 위에 얹는다
+  // 등번호: 숫자 높이 24cm. 구단 마킹처럼 숫자 하나의 폭이 높이의 0.4배쯤 되게 옆으로 좁힌다.
+  // 숫자와 무늬·엠블럼을 따로 그린 뒤 테두리 위에 얹는다
   const digits = no === '' ? [] : [...String(no)];
   if (digits.length) {
-    const l = layer.getContext('2d'), base = cy(107.5);
+    const l = layer.getContext('2d'), base = cy(109), tall = cm(24);
     g.font = DIGIT(100);
     const m = g.measureText('0');
-    let size = cm(26) / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * 100;
+    const size = tall / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * 100;
     g.font = l.font = DIGIT(size);
-    const space = () => size * 0.05, ws = () => digits.map(d => g.measureText(d).width), total = () => ws().reduce((a, b) => a + b, 0) + space() * (digits.length - 1);
-    if (total() > cm(29)) { size *= cm(29) / total(); g.font = l.font = DIGIT(size); }
+    const space = size * 0.04, ws = digits.map(d => g.measureText(d).width), total = ws.reduce((a, b) => a + b, 0) + space * (digits.length - 1);
+    const squeeze = Math.min(1, tall * 0.4 * digits.length / total), sx = x => W / 2 + (x - W / 2) * squeeze;
     const xs = [];
-    let x = (W - total()) / 2;
-    for (const w of ws()) { xs.push(x + w / 2); x += w + space(); }
+    let x = (W - total) / 2;
+    for (const w of ws) { xs.push(x + w / 2); x += w + space; }
+    const narrow = c => c.setTransform(squeeze, 0, 0, 1, W / 2 * (1 - squeeze), 0);
     l.clearRect(0, 0, W, H);
     l.globalCompositeOperation = 'source-over';
     l.textAlign = 'center'; l.textBaseline = 'alphabetic'; l.fillStyle = ink;
     // 글꼴보다 획을 BOLD 만큼 두껍게: 같은 색 선을 둘레에 한 번 더 긋는다
     l.lineJoin = 'round'; l.strokeStyle = ink; l.lineWidth = BOLD * 2;
+    narrow(l);
     digits.forEach((d, i) => { l.fillText(d, xs[i], base); l.strokeText(d, xs[i], base); });
+    l.resetTransform();
     l.globalCompositeOperation = 'source-atop';
     pattern(l, kit.mark, ink);
-    if (emblem) { const e = cm(2.1); digits.forEach((d, i) => l.drawImage(emblem, xs[i] - e / 2, base - size * 0.072 - e / 2, e, e)); }
+    if (emblem) { const e = cm(1.7); digits.forEach((d, i) => l.drawImage(emblem, sx(xs[i]) - e / 2, base - size * 0.07 - e / 2, e, e)); }
     l.globalCompositeOperation = 'source-over';
     g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
+    narrow(g);
     g.strokeStyle = ink; g.lineWidth = BOLD * 2 + cm(1.7); digits.forEach((d, i) => g.strokeText(d, xs[i], base));
     g.strokeStyle = back; g.lineWidth = BOLD * 2 + cm(0.85); digits.forEach((d, i) => g.strokeText(d, xs[i], base));
+    g.resetTransform();
     g.drawImage(layer, 0, 0);
   }
 
   // 등 아래 스폰서: 화살 모양 HD 표시 뒤에 글자. 글자가 'HD' 뿐이면 크게 로고처럼
   if (kit.back) {
-    const logo = kit.back === 'HD', size = cm(logo ? 4.4 : 2.9), y = cy(logo ? 102 : 101);
+    const logo = kit.back === 'HD', size = cm(logo ? 4.2 : 2.9), y = cy(logo ? 103 : 102);
     g.font = NAME(size); g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = ink;
     const mark = size * 0.78, gap = size * 0.18, width = Math.min(cm(22), mark + gap + g.measureText(kit.back).width);
     const x = (W - width) / 2, h = size * 0.72;

@@ -9,6 +9,7 @@ const COUNT_MS = 700;     // 3·2·1 의 한 박자
 const FLIP_MS = 450;      // 카드가 뒤집히는 시간. style.css 의 .turn 과 같다
 const CHARGE_MS = 1100;   // 펼치기 전 카드가 달아오르는 시간
 const CLUE_MS = 750;      // 단서 하나를 보여 주는 시간
+const LIT_MS = 1300;      // 조명이 켜진 선수를 카드보다 먼저 보여 주는 시간
 const PHOTO_WAIT = 1200;  // 뽑은 선수의 사진을 이만큼까지 기다렸다가 카드를 뒤집는다
 const SHEETS = { players: '선수', kits: '유니폼', draw: '뽑기' };
 const POS = { FW: '공격수', MF: '미드필더', DF: '수비수', GK: '골키퍼' };
@@ -41,6 +42,14 @@ const playerCell = (p, s) => {
 };
 const kitCell = (k, s, worn) => `<button class="cell" data-act="wear" data-id="${k.id}" aria-pressed="${k.id === worn}"${s.kits.includes(k.id) ? '' : ' disabled'}>${shirtSvg(k)}<span>${k.name}</span></button>`;
 // 뒤집힌 카드의 앞면: 선수면 사진·등번호·이름·포지션, 유니폼이면 셔츠 그림과 이름
+// 뽑기 때 걸어 나올 선수와 입을 유니폼. 선수를 뽑으면 그 선수가 지금 유니폼을, 유니폼을 뽑으면 그 유니폼을 입을 수 있는
+// 선수(지금 고른 선수, 아니면 가진 선수 가운데 골키퍼·필드가 맞는 선수)가 그 유니폼을 입고 나온다
+function walkerOf(state, item) {
+  if (item.type === 'player') return [item.id, byNo(item.id).pos === 'GK' ? state.gkKit : state.kit];
+  const gk = !!kitById(item.id).gk, fits = no => (byNo(no).pos === 'GK') === gk;
+  return [fits(state.player) ? state.player : state.players.find(fits) ?? state.player, item.id];
+}
+
 // 카드를 펼치기 전에 하나씩 보여 주는 단서. 선수는 포지션과 등번호, 유니폼은 종류
 function cluesOf(item) {
   if (item.type === 'player') { const p = byNo(item.id); return [[POS[p.pos], 'word'], [String(p.no), 'num']]; }
@@ -154,7 +163,7 @@ const HTML = `
 // show(name, data): 'home' | 'run' { hint } | 'pause' | 'over' { dist, coins, best } | 'nogl' 은 화면을 바꾸고,
 // 'players' | 'kits' | 'draw' 는 지금 화면 위에 시트를 연다.
 // onLook(): 고른 선수나 유니폼이 바뀌었다(저장은 이미 했다)
-export function createScreens(root, { store, sound, onStart, onOpen, onPause, onResume, onShare, onHome, onQuit, onLook }) {
+export function createScreens(root, { store, sound, onStart, onOpen, onPause, onResume, onShare, onHome, onQuit, onLook, onReveal = () => false }) {
   root.innerHTML = HTML;
   root.toggleAttribute('data-inapp', isInApp(navigator.userAgent));
   const slots = {}, body = root.querySelector('.s-sheet .body');
@@ -198,6 +207,11 @@ export function createScreens(root, { store, sound, onStart, onOpen, onPause, on
     roll.hidden = !left || need > 0;
     roll.className = got ? 'pill' : 'go';
     roll.firstChild.data = got ? '한 번 더' : '뽑기';
+  }
+
+  function walking(on) {
+    root.toggleAttribute('data-walk', on);
+    if (!on) onReveal('stop');
   }
 
   const sheets = {
@@ -264,7 +278,7 @@ export function createScreens(root, { store, sound, onStart, onOpen, onPause, on
     prev: () => step(-1), next: () => step(1),
     start: onStart, pause: onPause, resume: onResume, share: onShare, home: onHome, quit: onQuit,
     players: () => onOpen('players'), kits: () => onOpen('kits'), draw: () => onOpen('draw'),
-    close() { turn++; delete root.dataset.sheet; body.innerHTML = ''; refresh(); },
+    close() { turn++; delete root.dataset.sheet; body.innerHTML = ''; walking(false); refresh(); },
     sound() { store.state.sound = !store.state.sound; store.save(); sound.setOn(store.state.sound); refresh(); },
     pick(cell) { store.state.player = Number(cell.dataset.id); mark(cell, body); chose(); },
     wear(cell) {
@@ -273,7 +287,7 @@ export function createScreens(root, { store, sound, onStart, onOpen, onPause, on
       mark(cell, cell.parentElement); chose();
     },
     // 한 번 뽑는다. 화면을 덮는 무대에서 카드가 달아오르고, 단서가 하나씩 나온 뒤, 번쩍이며 뒤집힌다.
-    // 화면을 누르면 남은 기다림을 건너뛰고, 움직임 줄이기에서는 바로 뒤집는다. 펼쳐 둔 카드가 있으면 먼저 덮는다
+    // 화면을 누르면 남은 기다림을 건너뛴다. 움직임 줄이기에서도 순서는 같고 흔들림·빛줄기·번쩍임만 뺀다(style.css). 펼쳐 둔 카드가 있으면 먼저 덮는다
     async roll() {
       const box = body.firstElementChild;
       const item = !box.hasAttribute('data-busy') && draw(store.state, Math.random);
@@ -283,13 +297,16 @@ export function createScreens(root, { store, sound, onStart, onOpen, onPause, on
       got = null; drawUi();
       const mine = turn, photo = item.type === 'player' && Object.assign(new Image(), { src: `img/card/${item.id}.jpg` });
       const clue = box.querySelector('.clue'), stage = name => { box.dataset.stage = name; };
-      let skip = matchMedia('(prefers-reduced-motion: reduce)').matches, skipped;
+      let skip = false, skipped;
       const hurry = new Promise(done => { skipped = done; });
       const onTap = () => { skip = true; skipped(); };
       box.addEventListener('pointerdown', onTap);
       const beat = ms => (skip ? Promise.resolve() : Promise.race([wait(ms), hurry]));
       box.setAttribute('data-reveal', '');
       if (box.hasAttribute('data-open')) { box.removeAttribute('data-open'); stage('close'); await wait(FLIP_MS); }
+      // 사람 모델이 와 있으면 카드 대신 선수가 어두운 통로에서 걸어 나온다
+      const walk = !skip && onReveal('start', ...walkerOf(store.state, item));
+      walking(walk); box.toggleAttribute('data-walk', walk);
       stage('charge'); if (!skip) sound.play('charge');
       await beat(CHARGE_MS);
       for (const [text, kind] of cluesOf(item)) {
@@ -300,13 +317,18 @@ export function createScreens(root, { store, sound, onStart, onOpen, onPause, on
         await beat(CLUE_MS);
       }
       if (photo) await Promise.race([photo.decode().catch(() => {}), wait(PHOTO_WAIT)]);
-      box.removeEventListener('pointerdown', onTap);
       if (mine !== turn) return;   // 그사이 시트를 닫았다. 뽑은 것은 이미 저장돼 있다
       clue.textContent = '';
       box.querySelector('.front').innerHTML = cardFront(item);
       stage('burst'); box.setAttribute('data-open', '');
       sound.play('reveal');
-      await wait(FLIP_MS);          // 카드가 다 뒤집힌 뒤에 고르는 버튼을 낸다
+      if (walk) {                    // 조명이 켜진 선수를 잠깐 보여 준 뒤 카드를 낸다
+        onReveal('reveal');
+        await wait(FLIP_MS);
+        stage('lit');
+        await beat(LIT_MS);
+      } else await wait(FLIP_MS);   // 카드가 다 뒤집힌 뒤에 고르는 버튼을 낸다
+      box.removeEventListener('pointerdown', onTap);
       if (mine !== turn) return;
       stage('done');
       box.removeAttribute('data-busy');

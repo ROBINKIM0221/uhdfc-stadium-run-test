@@ -32,6 +32,13 @@ function boot() {
     store, sound, onStart: start, onPause: pause, onResume: resume, onHome: home, onQuit: quit,
     onOpen: name => screens.show(name),
     onLook: () => view.setLook(look()),
+    // 뽑기 입장 장면: start 는 걸어 나올 수 있으면 true, reveal 은 조명을 켜고, stop 은 게임 장면으로 돌아간다
+    onReveal: (step, no, kit) => {
+      if (!view) return false;
+      if (step === 'start') return view.walkout.start(no, kit);
+      if (step === 'reveal') view.walkout.reveal(); else if (step === 'stop') view.walkout.stop();
+      return true;
+    },
     onShare: async () => sendShare(await card()),
   });
 

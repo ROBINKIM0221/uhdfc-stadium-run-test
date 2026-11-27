@@ -6,7 +6,8 @@ const POPS = 8, MAX_COINS = 96 + POPS;   // 놓인 코인 96개와 방금 주운
 const COIN_R = 0.24;
 const SPIN = 4, WAVE = 0.45;   // 도는 빠르기(rad/초)와, 1m 뒤의 코인이 어긋나 도는 각: 줄 전체가 물결처럼 돈다
 const POP = 0.28;              // 주운 코인이 위로 튀며 사라지는 시간(초)
-const ITEM_Y = 0.75, BEAM_H = 5;
+export const ITEM_Y = 0.75;
+const BEAM_H = 5;
 
 // 가운데가 도톰하고 테두리가 짙은 원반. 넓은 면이 앞을 보게 세워 둔다.
 // 테두리 색이 달라서 줄지어 겹쳐 보여도 하나씩 갈라져 보인다
@@ -57,7 +58,7 @@ export function create(ctx) {
 
   // 아이템은 300m 넘게 떨어져 놓이므로 한 번에 하나만 보인다
   const item = new THREE.Group();
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ map: ballTexture(), emissive: '#7a5200' }));
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ map: ballTexture(), emissive: '#a04800' }));
   const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.5, BEAM_H).translate(0, BEAM_H / 2 - ITEM_Y, 0),
     new THREE.MeshBasicMaterial({ map: beamTexture(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, toneMapped: false }));
   item.add(ball, beam);
