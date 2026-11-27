@@ -11,3 +11,13 @@ test('제목 글꼴에 화면 글자, 선수 이름, 유니폼 이름의 한글�
   }
   assert.deepEqual([...missing], [], 'tools/font.py 를 다시 돌린다');
 });
+
+// 등 마킹 글꼴은 선수 이름과 스폰서 글자만 담고 있다
+test('등 마킹 글꼴에 선수 이름과 유니폼 자료의 한글이 모두 들어 있다', () => {
+  const have = new Set(readFileSync('fonts/gothic-a1-900-marking.txt', 'utf8'));
+  const missing = new Set();
+  for (const f of ['js/data/players.js', 'js/data/kits.js']) {
+    for (const c of readFileSync(f, 'utf8')) if (c >= '가' && c <= '힣' && !have.has(c)) missing.add(c);
+  }
+  assert.deepEqual([...missing], [], 'tools/marking-font.py 를 다시 돌린다');
+});

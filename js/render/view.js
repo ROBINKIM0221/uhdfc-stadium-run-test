@@ -10,12 +10,14 @@ import * as hero from './hero.js';
 import * as defenders from './defenders.js';
 import * as pickups from './pickups.js';
 import { loadFace } from './heads.js';
+import { usePainter } from './kit-paint.js';
 
 // 품질 단계와 화면 배율 상한. 그림자 지도 크기는 daynight, 관절 몸 수는 defenders 가 단계 이름으로 정한다
 const TIERS = ['low', 'mid', 'high'];
 const RATIO = { low: 1, mid: 1.5, high: 2 };
 // 늘 선수 뒤 위에서 따라간다. 첫 화면에서도 같은 자리라 달리기 시작할 때 화면이 튀지 않는다. 세로 화면은 선수 깊이에서 가로 4m 쯤만 보여서 좌우는 일부만 따라간다
 const CAM = { fov: 62, height: 3.6, back: 5.2, follow: 0.62, wide: 7 };   // wide: 가장 빠를 때 넓어지는 시야각(도)
+const SHAKE = 0.35;        // 공을 찬 순간 화면이 흔들리는 시간(초)
 const OVER_TILT = 0.6;     // 결과 화면으로 넘어가며 고개를 숙이는 시간(초)
 const mix = (a, b, k) => a + (b - a) * k;
 
@@ -23,6 +25,7 @@ const mix = (a, b, k) => a + (b - a) * k;
 // WebGL 을 못 쓰는 브라우저에서는 예외를 던진다
 export function createView(canvas, { quality = 'auto', look = {} } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  usePainter(renderer);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(CAM.fov, 1, 0.5, 300);
@@ -38,6 +41,8 @@ export function createView(canvas, { quality = 'auto', look = {} } = {}) {
   const pieces = [daynight, fx, stadium, hero, defenders, pickups].map(m => m.create(ctx));
   let shown = null;
   let over = 0;        // 결과 화면으로 넘어온 정도(0..1). 카메라가 고개를 숙이는 데 쓴다
+  let shakeAt = -1e9;  // 화면이 흔들리기 시작한 시각
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');   // 움직임 줄이기에서는 흔들지 않는다
 
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -91,6 +96,7 @@ export function createView(canvas, { quality = 'auto', look = {} } = {}) {
     // 틱을 돌린 뒤마다 부른다. 시계를 그 틱이 시작한 시각에 맞춰 두어 조각들이 ctx.now 를 동작의 시작으로 쓴다
     onEvents(events, run) {
       ctx.now = (run.tick - 1) * TICK;
+      if (events.some(ev => ev.type === 'item') && !calm.matches) shakeAt = ctx.now;
       for (const ev of events) for (const p of pieces) p.onEvent(ev, run);
     },
 
@@ -101,7 +107,9 @@ export function createView(canvas, { quality = 'auto', look = {} } = {}) {
       ctx.now = ctx.mode === 'run' && run.alive ? (run.tick - 1 + alpha) * TICK : ctx.now + dt;
       // 카메라를 먼저 놓는다: 납작한 머리가 이번 프레임의 카메라를 보고 돈다
       const x = (run.px + (run.x - run.px) * alpha) * CAM.follow;
-      camera.position.set(x, CAM.height, CAM.back);
+      // 아이템으로 공을 찬 순간 잠깐 흔들린다
+      const shake = Math.max(0, 1 - (ctx.now - shakeAt) / SHAKE) ** 2 * 0.14;
+      camera.position.set(x + shake * Math.sin(ctx.now * 71), CAM.height + shake * Math.sin(ctx.now * 53 + 1), CAM.back);
       // 결과 화면에서는 고개를 숙여 선수를 화면 가운데로 올린다. 아래쪽 버튼이 선수를 가리지 않는다
       over = ctx.mode === 'over' ? Math.min(1, over + dt / OVER_TILT) : 0;
       const down = over * over * (3 - 2 * over);

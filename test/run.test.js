@@ -10,10 +10,10 @@ function go(run, n, first = []) {
   return all;
 }
 
-test('1초에 12m 남짓 나아간다', () => {
+test('1초에 13m 남짓 나아간다', () => {
   const run = createRun(1);
   go(run, 60);
-  assert.ok(run.dist >= 12.1 && run.dist <= 12.3, `dist=${run.dist}`);
+  assert.ok(run.dist >= 13.3 && run.dist <= 13.5, `dist=${run.dist}`);
   assert.equal(run.tick, 60);
 });
 

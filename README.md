@@ -50,4 +50,4 @@ python tools/font.py <글꼴 파일>      # 제목 글꼴에서 화면에 나오
 
 ## 쓴 것
 
-three.js(MIT)를 `js/vendor` 에 같이 싣는다. 글꼴 Teko, Barlow Condensed, Black Han Sans 는 OFL 이다.
+three.js(MIT)와 그 불러오기 도구(GLTFLoader, SkeletonUtils, BufferGeometryUtils)를 `js/vendor` 에 같이 싣는다. 사람 모델과 동작(`models`)은 Adobe Mixamo 의 것을 게임에 맞게 줄인 것이다. 글꼴 Teko, Barlow Condensed, Black Han Sans, 등 마킹의 Gothic A1 은 OFL 이다(쓰는 글자만 뽑은 것: `tools/font.py`, `tools/marking-font.py`). 잔디 사진(`img/turf`)은 ambientCG 의 Grass005(CC0)를 색만 맞춘 것이다.

@@ -1,28 +1,38 @@
-// 화면 효과: 발밑 둥근 그림자, 입자(반짝임·먼지·충격), 아이템 동안의 공 꼬리와 속도선, 제쳤을 때 가장자리 번쩍임.
+// 화면 효과: 발밑 둥근 그림자, 입자(반짝임·먼지·충격), 아이템 동안의 불꽃볼(불길·불꼬리·연기·불똥)과 속도선, 제쳤을 때 가장자리 번쩍임.
 // 입자와 꼬리, 속도선은 모두 네모 조각이고 한 그물에 모아 한 번에 그린다.
 import * as THREE from './three.js';
 import { BODY_MID, BOOST_TICKS } from '../sim/constants.js';
 
 const MAX_BLOBS = 64;
-const PARTS = 96;                  // 한꺼번에 살아 있을 수 있는 입자
-const TRAIL = 4, STREAKS = 14;     // 공 꼬리와 속도선에 쓰는 조각
-const QUADS = PARTS * 2 + TRAIL + STREAKS;   // 별 모양 입자는 조각 둘을 쓴다
+const PARTS = 384;                 // 한꺼번에 살아 있을 수 있는 입자
+const TRAIL = 4, STREAKS = 14;     // 불꼬리와 속도선에 쓰는 조각
+const QUADS = PARTS * 2 + TRAIL + STREAKS + 2;   // 별 모양 입자는 조각 둘을 쓴다. 2 는 공을 감싸는 빛
 const TRAIL_LEN = 7;               // 꼬리가 가장 길 때(m)
 const FLASH = 0.5;                 // 번쩍임이 사라지는 시간(초)
 const THIN = 0.2;                  // 별의 팔 굵기(길이에 대한 비율)
 const GAMMA = 2.2;
 
 const rgb = hex => new THREE.Color(hex).toArray();
-const GOLD = rgb('#FFC72C'), PALE = rgb('#FFF6D8');
+const GOLD = rgb('#FFC72C'), PALE = rgb('#FFF6D8'), FIRE = rgb('#FF7A1A');
+// 불꼬리: 공 쪽부터 흰 노랑, 노랑, 주황, 붉은 주황. [길이 비율, 폭(m), 색, 밝기, 가리는 정도]
+const TAIL = [[1, 0.36, rgb('#E8340C'), 0.75, 0.55], [0.72, 0.26, rgb('#FF7A1A'), 0.9, 0.5], [0.42, 0.17, rgb('#FFC44A'), 1, 0], [0.2, 0.1, PALE, 1, 0]];
 // 입자 종류. life: 수명(초), size: 처음·끝 반지름(m), alpha: 불투명도(0 이면 빛처럼 더해 그린다.
 // 밝은 잔디 위에서 금색이 바래지 않게 금빛 입자는 덮어 그린다), speed: 퍼지는 빠르기, flat: 위아래로 퍼지는 비율,
-// up: 위로 뜨는 빠르기, grav: 중력, star: 십자로 반짝이는 모양
+// up: 위로 뜨는 빠르기, grav: 중력(+ 면 위로 빨라진다), back: 뒤로 끌리는 빠르기, tall: 세로로 늘인 비율, star: 십자로 반짝이는 모양
 const KINDS = {
   spark: { life: 0.45, size: [0.2, 0.06], color: GOLD, alpha: 0.9, speed: 1.2, flat: 1, up: 2.8, grav: -4, star: true },
   burst: { life: 0.55, size: [0.42, 0.14], color: GOLD, alpha: 0.9, speed: 5, flat: 1, up: 1.5, grav: -6, star: true },
   pop:   { life: 0.18, size: [0.3, 1.3], color: rgb('#B89A50'), alpha: 0, speed: 0, flat: 0, up: 0, grav: 0 },
   puff:  { life: 0.4, size: [0.2, 0.6], color: rgb('#F4F4EC'), alpha: 0.5, speed: 2.2, flat: 0.7, up: 0.6, grav: 0 },
   dust:  { life: 0.35, size: [0.12, 0.4], color: rgb('#E4E8D0'), alpha: 0.45, speed: 1.8, flat: 0.1, up: 0.3, grav: 0 },
+  // 불: 붉은 겉불길 위에 빛나는 속불이 겹쳐 오르며 달리는 반대쪽으로 끌리고, 불똥이 튀고 옅은 연기가 남는다
+  flame: { life: 0.36, size: [0.3, 0.05], color: rgb('#FF4A0C'), alpha: 0.8, speed: 0.5, flat: 1, up: 0.9, grav: 3, back: 6, tall: 1.4 },
+  core:  { life: 0.24, size: [0.24, 0.04], color: rgb('#FFB238'), alpha: 0, speed: 0.3, flat: 1, up: 0.6, grav: 2.2, back: 5, tall: 1.3 },
+  ember: { life: 0.7, size: [0.05, 0.015], color: rgb('#FFE8A0'), alpha: 0, speed: 2.2, flat: 1, up: 2.4, grav: -1.5, back: 6 },
+  smoke: { life: 0.8, size: [0.16, 0.55], color: rgb('#4A3A32'), alpha: 0.28, speed: 0.4, flat: 1, up: 1.1, grav: 0.4, back: 6 },
+  foot:  { life: 0.28, size: [0.13, 0.03], color: rgb('#FF7A1A'), alpha: 0, speed: 0.2, flat: 1, up: 0.8, grav: 2, back: 3, tall: 1.4 },
+  // 불꽃볼에 맞아 쓰러질 때 터지는 불
+  blast: { life: 0.5, size: [0.45, 0.1], color: rgb('#FF6A1A'), alpha: 0.75, speed: 3.2, flat: 0.8, up: 1.6, grav: 2 },
 };
 
 function texture(size, stops) {
@@ -123,7 +133,7 @@ export function create(ctx) {
   flash.frustumCulled = false; flash.renderOrder = 10; flash.visible = false;
   scene.add(flash);
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
-  let beatAt = -1e9;
+  let beatAt = -1e9, fuel = 0, feet = 0;   // fuel·feet: 공과 발에서 아직 피우지 못한 불꽃의 수
 
   return {
     reset() {
@@ -132,22 +142,41 @@ export function create(ctx) {
     },
 
     // 다른 조각보다 먼저 불려서 지난 프레임의 그림자를 비운다
-    update(run, alpha) {
+    update(run, alpha, dt) {
       blobs.visible = ctx.quality === 'low';
       blobs.count = 0;
       blobs.instanceMatrix.needsUpdate = true;
 
       const t = ctx.now, dist = run.pdist + (run.dist - run.pdist) * alpha;
+      // 불꽃볼: 공에서 불길·속불·불똥·연기를 피우고, 두 발에서는 작은 불꽃을 피운다.
+      // 자리는 지난 프레임 것이다(선수를 그리는 조각이 이 조각 뒤에 돈다)
+      const burn = ctx.burn, hot = burn && burn.heat > 0;
       n = 0;
+      if (hot && dt > 0) {
+        const ball = burn.pts[burn.pts.length - 1], step = Math.min(dt, 0.05) * burn.heat;
+        fuel += step * 300;
+        for (; fuel >= 1; fuel--) {
+          const r = rnd();
+          emit(r < 0.45 ? KINDS.flame : r < 0.8 ? KINDS.core : r < 0.92 ? KINDS.ember : KINDS.smoke, 1, ball.x, ball.y + 0.05, ball.z, run, false);
+        }
+        feet += step * 60;
+        for (; feet >= 1; feet--) { const f = burn.pts[Math.floor(rnd() * (burn.pts.length - 1))]; emit(KINDS.foot, 1, f.x, f.y, f.z, run, false); }
+      } else fuel = feet = 0;
       for (const p of parts) {
         const k = p.kind;
         if (!k) continue;
         const age = t - p.t0, u = age / k.life;
         if (u < 0 || u >= 1) { if (u >= 1) p.kind = null; continue; }
         const s = k.size[0] + (k.size[1] - k.size[0]) * u, f = 1 - u * u, gain = f * (k.alpha || 1), a = f * k.alpha;
-        const x = p.x + p.vx * age, y = Math.max(0.03, p.y + p.vy * age + 0.5 * k.grav * age * age), z = p.z + (p.scroll ? dist - p.d0 : 0);
+        const x = p.x + p.vx * age, y = Math.max(0.03, p.y + p.vy * age + 0.5 * k.grav * age * age), z = p.z + (p.scroll ? dist - p.d0 : 0) + (k.back || 0) * age;
         if (k.star) { sprite(x, y, z, s, s * THIN, k.color, gain, a); sprite(x, y, z, s * THIN, s, k.color, gain, a); }
-        else sprite(x, y, z, s, s, k.color, gain, a);
+        else sprite(x, y, z, s, s * (k.tall || 1), k.color, gain, a);
+      }
+      // 공을 감싸는 빛: 크고 옅은 주황 위에 작고 밝은 속빛
+      if (hot) {
+        const b = burn.pts[burn.pts.length - 1], g = burn.heat * burn.flicker;
+        sprite(b.x, b.y + 0.05, b.z, 1.15, 1.15, FIRE, g * 0.55, 0);
+        sprite(b.x, b.y + 0.02, b.z, 0.4, 0.4, PALE, g, 0);
       }
 
       // 아이템 동안: 처음과 끝에서 서서히 켜지고 꺼진다
@@ -158,12 +187,12 @@ export function create(ctx) {
           const u = (t * l.rate + l.phase) % 1;
           streak(x + l.x, l.y, -10 + 14 * u, 3.2, 0.045, PALE, boost * Math.sin(Math.PI * u), 0);
         }
-        // 차 낸 공 뒤로 끌리는 꼬리: 길이가 다른 띠를 겹쳐 공 쪽이 가장 밝다. 공이 발밑에 있으면 길이가 0 이다.
+        // 차 낸 공 뒤로 끌리는 불꼬리: 색과 길이가 다른 띠를 겹쳐 공 쪽이 가장 희고 밝다. 공이 발밑에 있으면 길이가 0 이다.
         // 공의 자리는 지난 프레임 것이다(공을 움직이는 조각이 이 조각 뒤에 돈다)
         const ball = ctx.ball;
         if (ball && ball.visible) {
           const b = ball.position, len = Math.min(TRAIL_LEN, -b.z - 1);
-          for (let i = 1; len > 0 && i <= TRAIL; i++) streak(b.x, b.y, b.z + len / i * 0.35, len / i, 0.14, GOLD, boost * 0.8, boost * 0.8);
+          if (len > 0) for (const [l, w, c, gain, a] of TAIL) streak(b.x, b.y + 0.04, b.z + len * l * 0.5, len * l, w, c, boost * gain, boost * a);
         }
       }
 
@@ -178,10 +207,17 @@ export function create(ctx) {
     onEvent(ev, run) {
       const x = run.x, y = run.y + BODY_MID;
       if (ev.type === 'coin') emit(KINDS.spark, 3, x, y + 0.2, -0.25, run, false);
-      else if (ev.type === 'item') { emit(KINDS.burst, 20, x, y + 0.2, -0.3, run, false); emit(KINDS.pop, 1, x, y + 0.2, -0.3, run, false); }
+      else if (ev.type === 'item') {
+        emit(KINDS.burst, 20, x, y + 0.2, -0.3, run, false); emit(KINDS.pop, 1, x, y + 0.2, -0.3, run, false);
+        emit(KINDS.blast, 10, x, y, -0.3, run, false); emit(KINDS.ember, 14, x, y, -0.3, run, false);
+      }
       else if (ev.type === 'land') emit(KINDS.dust, 5, x, 0.1, 0.1, run, true);
       else if (ev.type === 'knock') {
-        for (const o of run.objs) if (o.id === ev.id) emit(KINDS.puff, 5, o.x, 0.9, run.dist - o.d, run, true);
+        for (const o of run.objs) if (o.id === ev.id) {
+          const z = run.dist - o.d;
+          emit(KINDS.puff, 4, o.x, 0.9, z, run, true);
+          if (run.boost > 0) { emit(KINDS.blast, 9, o.x, 0.8, z, run, true); emit(KINDS.ember, 10, o.x, 0.8, z, run, true); emit(KINDS.smoke, 4, o.x, 1, z, run, true); }
+        }
       } else if (ev.type === 'beat' && !calm.matches) beatAt = ctx.now;   // 움직임 줄이기에서는 번쩍이지 않는다
     },
   };

@@ -40,6 +40,14 @@ const RECIPES = {
   jump: (c, o, t) => tone(c, o, t, { type: 'triangle', f0: 300, f1: 660, dur: 0.16, gain: 0.16 }),
   coin: (c, o, t) => { tone(c, o, t, { type: 'triangle', f0: 1320, dur: 0.06, gain: 0.13 }); tone(c, o, t + 0.05, { type: 'triangle', f0: 1760, dur: 0.12, gain: 0.13 }); },
   item: (c, o, t) => [523, 659, 784, 1047].forEach((f, i) => tone(c, o, t + i * 0.07, { type: 'triangle', f0: f, dur: 0.16, gain: 0.17 })),
+  // 뽑기: 차오르는 바람 소리, 단서마다 쿵, 펼칠 때 터지는 소리와 올라가는 화음
+  charge: (c, o, t, n) => { noise(c, o, t, n, { f0: 300, f1: 3200, q: 0.9, dur: 1.15, gain: 0.22, peak: 1.0 }); tone(c, o, t, { type: 'sawtooth', f0: 90, f1: 360, dur: 1.1, gain: 0.05 }); },
+  clue: (c, o, t, n) => { tone(c, o, t, { f0: 140, f1: 50, dur: 0.22, gain: 0.5 }); noise(c, o, t, n, { filter: 'highpass', f0: 2500, dur: 0.12, gain: 0.12 }); },
+  reveal: (c, o, t, n) => {
+    tone(c, o, t, { f0: 170, f1: 40, dur: 0.4, gain: 0.6 });
+    noise(c, o, t, n, { f0: 900, f1: 5000, q: 0.6, dur: 0.6, gain: 0.3, peak: 0.02 });
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(c, o, t + 0.08 + i * 0.06, { type: 'triangle', f0: f, dur: 0.5, gain: 0.14 }));
+  },
   kick: (c, o, t, n) => { tone(c, o, t, { f0: 190, f1: 45, dur: 0.16, gain: 0.55 }); noise(c, o, t, n, { filter: 'highpass', f0: 1800, dur: 0.05, gain: 0.25 }); },
   knock: (c, o, t, n) => { tone(c, o, t, { f0: 120, f1: 55, dur: 0.13, gain: 0.34 }); noise(c, o, t, n, { filter: 'lowpass', f0: 900, dur: 0.09, gain: 0.2 }); },
   beat: (c, o, t, n) => noise(c, o, t, n, { f0: 700, f1: 1100, q: 0.5, dur: 1.0, gain: 0.3, peak: 0.25 }),

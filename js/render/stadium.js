@@ -395,6 +395,14 @@ export function create(ctx) {
 
   const ground = new THREE.Mesh(groundGeometry(), new THREE.MeshLambertMaterial({ map: map(grassTexture), vertexColors: true }));
   ground.receiveShadow = true;
+  // 실제 잔디 사진과 그 결의 높낮이(노멀) 그림이 오면 바꿔 끼운다. 오기 전과 못 받았을 때는 위의 그린 잔디로 둔다
+  const photo = (file, srgb, done) => new THREE.TextureLoader().load(new URL(`../../img/turf/${file}`, import.meta.url).href, t => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    done(t);
+  });
+  photo('grass.jpg', true, t => { ground.material.map = t; });
+  photo('grass-normal.jpg', false, t => { ground.material.normalMap = t; ground.material.normalScale.set(0.6, 0.6); ground.material.needsUpdate = true; });
   // 선은 잔디와 같은 높이에 깔고 깊이만 앞당겨 겹쳐 떨리지 않게 한다. 발밑 그림자보다 먼저 그려야 그림자가 선 위에도 진다
   const lines = new THREE.Mesh(linesGeometry(), new THREE.MeshLambertMaterial({
     map: map(paintTexture), color: '#eef2ea', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,

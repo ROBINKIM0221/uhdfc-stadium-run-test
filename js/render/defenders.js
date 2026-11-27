@@ -4,11 +4,12 @@ import * as THREE from './three.js';
 import { laneX, KEEPER_TELL, KEEPER_FLY } from '../sim/constants.js';
 import { isPickup } from '../sim/objects.js';
 import { hash2 } from '../sim/rng.js';
-import { PLAYERS, START_PLAYER } from '../data/players.js';
+import { PLAYERS, START_PLAYER, byNo } from '../data/players.js';
 import { KITS, START_KITS, opponentKits } from '../data/kits.js';
 import { FACE_COLORS } from '../data/face-colors.js';
 import { makeRig, bakeRig, paint, tint } from './rig.js';
 import { flatHead, loadFace, shadeFlats, faceCamera } from './heads.js';
+import { loadPlayer, loadFar, createBody, bakeBody } from './player-model.js';
 import { apply, blend, mirror, sample, smooth } from './anim.js';
 import { JOCKEY, SHUFFLE, SPRINT, COIL, KEEPER_READY, GUARD0, KEEPER0, LIE_BACK, LIE_Y, CLIPS, KNOCKS, hash } from './clips-def.js';
 
@@ -65,7 +66,8 @@ function note(o, tick) {
 // 막는 것 하나의 모습. 몸의 mid 높이(발밑에서 잰 거리)가 (x, y, z) 에 오고, 이쪽을 본 채 yaw 만큼 돌아서서
 // pitch 만큼 뒤로, roll 만큼 경기장 오른쪽으로 눕는다. 구운 동작을 얹으면 그 자리는 골반이고 mid 는 골반의 높이다.
 // pose 는 관절 몸일 때만 채운다
-const at = { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0, mid: 0, pose: null };
+// real: 사람 모델에 실제 사람의 동작(name)을 쓸 몫(w). 서 있거나 달려올 때만 쓰고, 움직임이 규칙과 맞아야 하는 동작은 관절 몸을 따른다
+const at = { x: 0, y: 0, z: 0, pitch: 0, yaw: 0, roll: 0, mid: 0, pose: null, real: { name: '', w: 0 } };
 
 // 구운 동작의 u(0..1) 시점을 지금 자리에 얹는다: 골반이 동작의 길을 따라가고, 몸은 그 골반에 매달린다. dir 이 -1 이면 좌우를 뒤집는다
 function put(def, u, dir, posed) {
@@ -83,7 +85,7 @@ function distant(still, pose, rel) {
 // 규칙의 상태에서 모습을 정한다. r: 그 막는 것에 적어 둔 것, x: 가로 자리, rel: 내 선수 앞 거리, hx: 내 선수의 가로 자리, t: 시계(초),
 // held: 쓰러졌거나 동작을 얹은 순간의 기록({ rel, lying }). 서 있다가 그렇게 된 선수는 선 자리만 정해 주고, 몸은 부른 쪽이 얹는다
 function shape(o, r, x, rel, hx, alpha, t, run, held, posed) {
-  at.x = x; at.y = 0; at.z = -rel; at.pitch = at.yaw = at.roll = at.mid = 0; at.pose = null;
+  at.x = x; at.y = 0; at.z = -rel; at.pitch = at.yaw = at.roll = at.mid = 0; at.pose = null; at.real.w = 0;
   const dx = hx - x, side = Math.abs(dx);
   // 코앞을 지나갈 때 고개가 홱 돌아가지 않게, 가까이 스칠수록 앞쪽에 있는 것으로 친다
   const aim = Math.atan2(dx, Math.max(rel, 1 - side));
@@ -113,7 +115,8 @@ function shape(o, r, x, rel, hx, alpha, t, run, held, posed) {
   if (held || !posed) return;
 
   let pose;
-  if (o.kind === 'keeper') pose = KEEPER_READY(t, o.id, aim);
+  const live = smooth((LIVE_FROM - rel) / (LIVE_FROM - LIVE_FULL));   // 멀리서는 굳은 자세로 넘어가므로 실제 동작도 그만큼 줄인다
+  if (o.kind === 'keeper') { pose = KEEPER_READY(t, o.id, aim); at.real.name = 'gkIdle'; at.real.w = live; }
   else if (o.kind === 'shift') {
     // 떠난 끝에서 온 거리로 걸음을 센다. 한 레인은 두 바퀴, 두 레인은 세 바퀴에 간다.
     // 지금 자리는 앞 틱의 것이고, 오가는 박자의 앞 절반이 a 에서 b 로 가는 길이다
@@ -124,10 +127,12 @@ function shape(o, r, x, rel, hx, alpha, t, run, held, posed) {
     const due = rel / run.speed, back = smooth((due - GONE) / BACK), near = smooth((NEAR_FROM - due) / (NEAR_FROM - NEAR_FULL)) * back;
     const poke = smooth((POKE_FROM - due) / (POKE_FROM - POKE_FULL)) * back * smooth((side - 0.3) / 0.5) * lerp(1, 0.3, smooth((side - POKE_WIDE) / 0.8));
     pose = JOCKEY(t, o.id, aim, near, poke, clamp(side - POKE_SHY, 0.3, 0.95));
+    at.real.name = 'defIdle'; at.real.w = live * (1 - Math.max(near, poke));   // 다가와 막기 시작하면 관절 몸의 자세로 넘어간다
     const ran = r.d0 - r.pd - (r.d - r.pd) * alpha;   // 달려온 거리
     if (o.kind === 'rush' && o.running && run.alive && ran > 0) {
-      const brk = smooth((BREAK_FROM - due) / (BREAK_FROM - BREAK_FULL));
-      pose = blend(pose, SPRINT(ran / STRIDE + 0.35 * brk + hash(o.id), (1 - smooth((ran - 0.4) / 3)) * (1 - brk)), smooth(ran / 0.9) * (1 - 0.7 * brk));
+      const brk = smooth((BREAK_FROM - due) / (BREAK_FROM - BREAK_FULL)), go = smooth(ran / 0.9) * (1 - 0.7 * brk);
+      pose = blend(pose, SPRINT(ran / STRIDE + 0.35 * brk + hash(o.id), (1 - smooth((ran - 0.4) / 3)) * (1 - brk)), go);
+      if (go > 0.5) { at.real.name = 'sprint'; at.real.w = (1 - brk) * go; }
     }
   }
   at.pose = distant(o.kind === 'keeper' ? KEEPER0 : GUARD0, pose, rel);
@@ -152,10 +157,34 @@ export function create(ctx) {
     ctx.scene.add(rig.root);
     // no: 이번 판에 맡은 선수, flat: 납작한 사진 머리를 썼는지,
     // o: 맡은 막는 것, clip: 얹힌 동작 { def, dir, t0, dur, x, d, rel, lying }, from·last·fade: 모습이 갑자기 바뀔 때 잇는 자세와 그 시각
-    slots.push({ rig, gk, no: 0, flat: false, id: 0, o: null, clip: null, from: null, last: null, fade: 0, seen: false });
+    // body: 사람 모델이 불러와지면 관절 몸을 따라 움직이는 몸. 그 전에는 관절 몸이 보인다
+    slots.push({ rig, body: null, gk, no: 0, flat: false, id: 0, o: null, clip: null, from: null, last: null, fade: 0, seen: false });
   };
   for (let i = 0; i < FIELD_RIGS + KEEPER_RIGS; i++) slot(i >= FIELD_RIGS);
   const byId = new Map();
+  const HEAD_R = 0.12;   // 사람 모델에 씌우는 사진 머리의 크기를 정하는 머리 반지름(m)
+  loadPlayer().then(loaded => {
+    for (const s of slots) {
+      s.body = createBody(loaded);
+      s.body.root.visible = s.body.anchor.visible = s.id !== 0;
+      s.rig.root.visible = false;
+      ctx.scene.add(s.body.root, s.body.anchor);
+    }
+    shown.seed = -1;   // 다음 그림에서 옷과 얼굴을 새 몸에 입힌다
+  }, () => {});
+  // 먼 선수도 사람 모델로: 준비 자세로 굳혀 바꿔 끼운다
+  loadFar().then(loaded => {
+    for (const [mesh, gk] of [[farField, false], [farKeeper, true]]) {
+      const rig = makeRig({ kit: KITS[0], gk });
+      apply(rig, gk ? KEEPER0 : GUARD0);
+      const baked = bakeBody(loaded, rig);
+      rig.dispose();
+      mesh.geometry.dispose(); mesh.material.dispose();
+      mesh.geometry = baked.geometry; mesh.material = baked.materials;
+      mesh.userData.dress = baked.dress;
+    }
+    shown.seed = -1;
+  }, () => {});
 
   // 먼 선수용: 준비 자세로 굳힌 몸. 머리는 그린 머리 그대로다
   const far = gk => {
@@ -172,8 +201,9 @@ export function create(ctx) {
 
   // 사진이 와 있으면 납작한 사진 머리를 씌운다. 아니면 그린 머리로 두었다가 사진이 오면 바꾼다
   function wear(s) {
-    const no = s.no, head = flatHead(no, s.rig.headR);
-    s.rig.setHead(head); s.flat = !!head;
+    const no = s.no, head = flatHead(no, s.body ? HEAD_R : s.rig.headR);
+    if (s.body) s.body.setFace(head); else s.rig.setHead(head);
+    s.flat = !!head;
     if (!head) loadFace(no).then(() => { if (s.no === no) wear(s); }, () => {});
   }
 
@@ -188,10 +218,12 @@ export function create(ctx) {
     for (const s of slots) {
       s.no = (s.gk ? who.gk : who.field).pop();
       s.rig.dress({ kit: s.gk ? kits.gk : kits.field, no: s.no, ...FACE_COLORS[s.no] });
+      if (s.body) s.body.dress({ kit: s.gk ? kits.gk : kits.field, no: s.no, cm: byNo(s.no).cm, kg: byNo(s.no).kg, ...FACE_COLORS[s.no] });
       wear(s);
     }
-    paint(farField.geometry, tint({ kit: kits.field }));
-    paint(farKeeper.geometry, tint({ kit: kits.gk }));
+    for (const [mesh, kit] of [[farField, kits.field], [farKeeper, kits.gk]]) {
+      if (mesh.userData.dress) mesh.userData.dress({ kit }); else paint(mesh.geometry, tint({ kit }));
+    }
   }
 
   // 비어 있는 몸 하나를 맡긴다. 어느 몸(= 어느 선수)부터 찾을지는 판의 씨앗과 막는 것의 번호로 정해, 같은 판이면 같은 선수가 나온다.
@@ -201,13 +233,15 @@ export function create(ctx) {
     let s = null;
     for (let i = 0; i < count && !s; i++) { const c = slots[from + (start + i) % count]; if (c.id === 0) s = c; }
     if (!s) return null;
-    s.id = o.id; s.o = o; s.clip = s.from = s.last = null; s.rig.root.visible = true;
+    s.id = o.id; s.o = o; s.clip = s.from = s.last = null;
+    if (s.body) s.body.root.visible = s.body.anchor.visible = true; else s.rig.root.visible = true;
     byId.set(o.id, s);
     return s;
   }
   function release(s) {
     byId.delete(s.id);
     s.id = 0; s.o = null; s.rig.root.visible = false;
+    if (s.body) s.body.root.visible = s.body.anchor.visible = false;
   }
 
   // 서 있는 선수에게 동작을 얹는다. 그때의 자리에 붙들어 두고, flip 이면 왼쪽(-x)으로 가는 쪽으로 뒤집는다.
@@ -264,7 +298,13 @@ export function create(ctx) {
           apply(s.rig, pose);
           s.rig.root.position.copy(p);
           s.rig.root.rotation.copy(e);
-          if (s.flat) faceCamera(s.rig.j.head, ctx.camera);
+          if (s.body) {
+            // 실제 동작은 선수마다 박자를 어긋나게 해서 같이 서 있어도 똑같이 움직이지 않는다
+            const real = c ? 0 : at.real.w;
+            if (real > 0) { const clip = s.body.clips.get(at.real.name); s.body.mocap(at.real.name, (t * (at.real.name === 'sprint' ? 1.4 : 1) + o.id * 1.37) % clip.duration); }
+            s.body.follow(s.rig, 1 - real);
+            s.body.placeFace(ctx.camera);
+          } else if (s.flat) faceCamera(s.rig.j.head, ctx.camera);
         } else {
           const mesh = o.kind === 'keeper' ? farKeeper : farField;
           if (mesh.count < FAR_MAX) mesh.setMatrixAt(mesh.count++, m.compose(p, q.setFromEuler(e), ONE));

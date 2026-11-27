@@ -6,7 +6,7 @@ import { smooth } from './anim.js';
 
 const TAU = Math.PI * 2;
 const THIGH = 0.35, SHIN = 0.35, HIP_X = 0.126, STAND = 0.7;   // rig.js 의 몸 비율: 허벅지, 정강이, 골반 반폭, 선 자세의 골반 관절에서 발목까지
-const STRIKE = Math.PI / 2 + 0.35;   // 왼발이 땅에 닿는 phase. 그 직전(π/2)에 왼 허벅지가 가장 앞에 와 있다
+export const STRIKE = Math.PI / 2 + 0.35;   // 왼발이 땅에 닿는 phase. 그 직전(π/2)에 왼 허벅지가 가장 앞에 와 있다
 const DUTY = 0.4;                    // 한 바퀴 가운데 발이 땅에 붙어 있는 몫
 const TOUCH = 0.72;                  // 오른발이 넘어오는 길의 이만큼에서 공을 민다
 const TOE = 0.2;                     // 발목에서 공에 닿는 발끝까지

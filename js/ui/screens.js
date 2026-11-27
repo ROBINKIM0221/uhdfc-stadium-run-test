@@ -7,6 +7,8 @@ import { KITS, GK_KITS, kitById } from '../data/kits.js';
 
 const COUNT_MS = 700;     // 3·2·1 의 한 박자
 const FLIP_MS = 450;      // 카드가 뒤집히는 시간. style.css 의 .turn 과 같다
+const CHARGE_MS = 1100;   // 펼치기 전 카드가 달아오르는 시간
+const CLUE_MS = 750;      // 단서 하나를 보여 주는 시간
 const PHOTO_WAIT = 1200;  // 뽑은 선수의 사진을 이만큼까지 기다렸다가 카드를 뒤집는다
 const SHEETS = { players: '선수', kits: '유니폼', draw: '뽑기' };
 const POS = { FW: '공격수', MF: '미드필더', DF: '수비수', GK: '골키퍼' };
@@ -39,6 +41,12 @@ const playerCell = (p, s) => {
 };
 const kitCell = (k, s, worn) => `<button class="cell" data-act="wear" data-id="${k.id}" aria-pressed="${k.id === worn}"${s.kits.includes(k.id) ? '' : ' disabled'}>${shirtSvg(k)}<span>${k.name}</span></button>`;
 // 뒤집힌 카드의 앞면: 선수면 사진·등번호·이름·포지션, 유니폼이면 셔츠 그림과 이름
+// 카드를 펼치기 전에 하나씩 보여 주는 단서. 선수는 포지션과 등번호, 유니폼은 종류
+function cluesOf(item) {
+  if (item.type === 'player') { const p = byNo(item.id); return [[POS[p.pos], 'word'], [String(p.no), 'num']]; }
+  return [['유니폼', 'word'], [kitById(item.id).gk ? '골키퍼' : '필드', 'word']];
+}
+
 function cardFront(item) {
   if (item.type === 'player') {
     const p = byNo(item.id);
@@ -64,8 +72,11 @@ const ICON = {
 };
 
 const DRAW_TILE = `<button class="tile" data-act="draw">${ICON.draw}<b>뽑기</b><small data-k="need"></small></button>`;
+// 펼치는 동안 화면을 덮는 무대: 도는 빛줄기, 떠오르는 불티, 단서 글자, 카드 위를 쓸고 가는 빛
+const SPARKS = Array.from({ length: 18 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${((i * 0.29) % 1.6).toFixed(2)}s;--s:${(0.7 + (i % 5) * 0.12).toFixed(2)}"></i>`).join('');
 const DRAW_SHEET = `<div class="draw">
-  <div class="card"><div class="turn"><div class="back"><img src="img/emblem.png" alt=""></div><div class="front"></div></div></div>
+  <div class="rays"></div><div class="sparks">${SPARKS}</div><p class="clue"></p>
+  <div class="card"><div class="turn"><div class="back"><img src="img/emblem.png" alt=""></div><div class="front"></div></div><i class="shine"></i></div>
   <div class="acts">
     <p class="msg"></p>
     <div class="pair" hidden><button class="go" data-act="ok">확인</button><button class="go alt" data-act="list"></button></div>
@@ -261,22 +272,43 @@ export function createScreens(root, { store, sound, onStart, onOpen, onPause, on
       store.state[kit.gk ? 'gkKit' : 'kit'] = kit.id;
       mark(cell, cell.parentElement); chose();
     },
-    // 한 번 뽑는다. 펼쳐 둔 카드가 있으면 먼저 덮고, 새 카드의 사진이 준비되면 뒤집는다
+    // 한 번 뽑는다. 화면을 덮는 무대에서 카드가 달아오르고, 단서가 하나씩 나온 뒤, 번쩍이며 뒤집힌다.
+    // 화면을 누르면 남은 기다림을 건너뛰고, 움직임 줄이기에서는 바로 뒤집는다. 펼쳐 둔 카드가 있으면 먼저 덮는다
     async roll() {
       const box = body.firstElementChild;
       const item = !box.hasAttribute('data-busy') && draw(store.state, Math.random);
       if (!item) return;
       store.save(); refresh();
       box.setAttribute('data-busy', '');
+      got = null; drawUi();
       const mine = turn, photo = item.type === 'player' && Object.assign(new Image(), { src: `img/card/${item.id}.jpg` });
-      if (box.hasAttribute('data-open')) { box.removeAttribute('data-open'); await wait(FLIP_MS); }
+      const clue = box.querySelector('.clue'), stage = name => { box.dataset.stage = name; };
+      let skip = matchMedia('(prefers-reduced-motion: reduce)').matches, skipped;
+      const hurry = new Promise(done => { skipped = done; });
+      const onTap = () => { skip = true; skipped(); };
+      box.addEventListener('pointerdown', onTap);
+      const beat = ms => (skip ? Promise.resolve() : Promise.race([wait(ms), hurry]));
+      box.setAttribute('data-reveal', '');
+      if (box.hasAttribute('data-open')) { box.removeAttribute('data-open'); stage('close'); await wait(FLIP_MS); }
+      stage('charge'); if (!skip) sound.play('charge');
+      await beat(CHARGE_MS);
+      for (const [text, kind] of cluesOf(item)) {
+        if (skip || mine !== turn) break;
+        clue.textContent = text; clue.dataset.kind = kind;
+        clue.classList.remove('hit'); void clue.offsetWidth; clue.classList.add('hit');   // 같은 단서 글자도 다시 쾅 하고 나오게 움직임을 처음부터
+        stage('clue'); sound.play('clue');
+        await beat(CLUE_MS);
+      }
       if (photo) await Promise.race([photo.decode().catch(() => {}), wait(PHOTO_WAIT)]);
+      box.removeEventListener('pointerdown', onTap);
       if (mine !== turn) return;   // 그사이 시트를 닫았다. 뽑은 것은 이미 저장돼 있다
+      clue.textContent = '';
       box.querySelector('.front').innerHTML = cardFront(item);
-      box.setAttribute('data-open', '');
-      sound.play('item');
+      stage('burst'); box.setAttribute('data-open', '');
+      sound.play('reveal');
       await wait(FLIP_MS);          // 카드가 다 뒤집힌 뒤에 고르는 버튼을 낸다
       if (mine !== turn) return;
+      stage('done');
       box.removeAttribute('data-busy');
       got = item;
       drawUi();

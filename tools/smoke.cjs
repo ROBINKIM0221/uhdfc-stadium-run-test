@@ -5,7 +5,8 @@ const { chromium } = require('./pw.cjs');
 
 (async () => {
   const url = process.argv[2] || 'http://localhost:5173/', [width, height] = (process.argv[3] || '390x844').split('x').map(Number);
-  const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+  // 사람 모델 여럿을 그려야 해서 소프트웨어 그리기로는 실제 시간을 따라가지 못한다. 이 컴퓨터의 그래픽 장치로 그린다
+  const browser = await chromium.launch({ channel: 'chrome', args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
   const page = await browser.newPage({ viewport: { width, height } });
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
@@ -15,7 +16,8 @@ const { chromium } = require('./pw.cjs');
 
   // 코인을 넉넉히 넣어 두고 연다(뽑기까지 보려고)
   await page.addInitScript(() => localStorage.setItem('uhd-dribble-run', JSON.stringify({ v: 1, coins: 250, best: 0, players: [10], kits: ['home', 'gk26h'], player: 10, kit: 'home', gkKit: 'gk26h', sound: true, seen: { hint: true } })));
-  await page.goto(url + '?debug=1&seed=7', { waitUntil: 'load' });
+  // 씨앗 13 의 판은 아래 입력의 시각이 0.2초쯤 어긋나도 멈추기 전에 부딪히지 않는다(규칙이 바뀌면 다시 고른다)
+  await page.goto(url + '?debug=1&seed=13', { waitUntil: 'load' });
   await page.waitForTimeout(1500);
   check(await mode() === 'home', '첫 화면이 뜬다');
 

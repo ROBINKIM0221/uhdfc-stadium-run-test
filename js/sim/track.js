@@ -4,7 +4,7 @@ import { LANES, TICK, MOVE_TICKS, AHEAD, RUSH_TRIGGER, RUSH_SPEED, COIN_H, speed
 import { PATTERNS, WEIGHTS, crowd } from './patterns.js';
 import { makeCoin, makeItem, makeStand, makeSlide } from './objects.js';
 
-const REACT = 0.45;        // 줄을 보고 움직이기 시작할 때까지 주는 시간(초)
+const REACT = 0.42;        // 줄을 보고 움직이기 시작할 때까지 주는 시간(초)
 const FIRST_ROW = 30;
 const LOOK = 40;           // 줄 사이가 이보다 멀어지지 않는다. 그 안의 가장 빠른 빠르기로 시간을 잰다
 
@@ -12,10 +12,11 @@ const COIN_LEAD = 1.5;     // 줄을 지난 뒤 이만큼부터 코인을 놓는
 const COIN_STOP = 1.2;     // 다음 줄 앞 이만큼에서 그친다(m)
 const COIN_BEAT = 0.2;     // 코인 하나를 줍고 다음 코인까지 걸리는 시간(초). 빨라질수록 간격을 벌려 줍는 소리의 박자를 지킨다
 const COIN_MIN = 1.6;      // 느릴 때에도 이보다 촘촘하게 놓지 않는다(m)
-const COIN_SIDE = 0.2;     // 다른 레인에도 한 줄이 더 놓일 확률
+const COIN_SIDE = 0.3;     // 다른 레인에도 한 줄이 더 놓일 확률
 const FIRST_ITEM = 260;
-const BETWEEN = [0, 0, 0.3, 0.45];   // 단계별로 줄 사이에 수비수가 한 명 더 서 있을 확률
-const BETWEEN_ROOM = 12;               // 줄 사이가 이보다 좁으면(m) 세우지 않는다
+const BETWEEN = [0.25, 0.55, 1, 1];     // 단계별로 줄 사이에 수비수가 한 명 더 서 있을 확률
+const BETWEEN2 = [0, 0.2, 0.75, 0.75];   // 그 옆 다른 레인에 둘째가 설 확률
+const BETWEEN_ROOM = 10;               // 줄 사이가 이보다 좁으면(m) 세우지 않는다
 
 export const tierAt = d => (d < 50 ? 0 : d < 160 ? 1 : d < 380 ? 2 : 3);
 
@@ -42,7 +43,7 @@ function addRow(t, objs) {
   const shift = Math.abs(safe - prev);
 
   const speed = speedAt(t.lastD + LOOK);
-  const slack = 0.34 - 0.24 * Math.min(1, t.lastD / 600);   // 반응 시간 위에 얹어 주는 여유(초). 600m 에서 0.1초까지 준다
+  const slack = 0.3 - 0.22 * Math.min(1, t.lastD / 500);   // 반응 시간 위에 얹어 주는 여유(초). 500m 에서 0.08초까지 준다
   let d = Math.max(FIRST_ROW, t.lastD + speed * (REACT + MOVE_TICKS * TICK * shift + slack));
   const tier = tierAt(d), kind = pickKind(tier, rnd());
   // 달려드는 수비수는 그만큼 일찍 닿고, 골키퍼는 몸을 날리는 것이 보여야 한다
@@ -55,11 +56,13 @@ function addRow(t, objs) {
   // 달려드는 수비수가 지나갈 레인에도 세우지 않는다
   const lo = Math.min(prev, safe), hi = Math.max(prev, safe), aside = [];
   for (let l = 0; l < LANES; l++) if ((l < lo || l > hi) && !made.some(o => o.kind === 'rush' && o.lane === l)) aside.push(l);
-  let between = -1;
-  if (aside.length && d - t.lastD >= BETWEEN_ROOM && rnd() < BETWEEN[tier]) {
-    between = aside[Math.floor(rnd() * aside.length)];
-    const z = t.lastD + (d - t.lastD) * (0.4 + 0.2 * rnd());
-    objs.push(rnd() < 0.3 ? makeSlide(id(), z, between, 1) : makeStand(id(), z, between));
+  const stood = [];
+  if (d - t.lastD >= BETWEEN_ROOM) for (const odds of [BETWEEN[tier], BETWEEN2[tier]]) {
+    const free = aside.filter(l => !stood.includes(l));
+    if (!free.length || rnd() >= odds) break;
+    const lane = free[Math.floor(rnd() * free.length)], z = t.lastD + (d - t.lastD) * (0.4 + 0.2 * rnd());
+    stood.push(lane);
+    objs.push(rnd() < 0.3 ? makeSlide(id(), z, lane, 1) : makeStand(id(), z, lane));
   }
   objs.push(...made);
   t.rows.push({ d, safe, kinds: [...new Set(made.map(o => o.kind))].sort() });
@@ -74,7 +77,7 @@ function addRow(t, objs) {
   } else {
     line(prev);
     const side = (prev + 1 + Math.floor(rnd() * (LANES - 1))) % LANES;
-    if (side !== between && rnd() < COIN_SIDE) line(side);
+    if (!stood.includes(side) && rnd() < COIN_SIDE) line(side);
   }
 
   t.lastD = d;

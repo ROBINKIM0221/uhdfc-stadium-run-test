@@ -100,9 +100,9 @@ function perSecond(kinds) {
   return n / sec;
 }
 
-test('1,000m 를 달리는 동안 막는 선수가 1초에 2.5명 넘게 지나간다', () => {
+test('1,000m 를 달리는 동안 막는 선수가 1초에 3.7명 넘게 지나간다', () => {
   const rate = perSecond(k => k !== 'coin' && k !== 'item');
-  assert.ok(rate >= 2.5, `1초에 ${rate.toFixed(2)}명`);
+  assert.ok(rate >= 3.7, `1초에 ${rate.toFixed(2)}명`);
 });
 
 test('달려드는 수비수가 1초에 0.26명 넘게 나온다', () => {

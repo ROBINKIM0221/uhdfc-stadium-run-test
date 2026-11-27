@@ -51,3 +51,17 @@ test('막는 쪽은 내 유니폼과 다른 계열을 입는다', () => {
     assert.ok(GK_KITS.includes(opponentKits('home', rnd).gk));
   }
 });
+
+test('선수마다 키와 몸무게가 있고 사람의 체격 범위다', () => {
+  for (const p of PLAYERS) {
+    assert.ok(p.cm >= 160 && p.cm <= 205, `${p.name} ${p.cm}cm`);
+    assert.ok(p.kg >= 55 && p.kg <= 115, `${p.name} ${p.kg}kg`);
+  }
+  assert.deepEqual([byNo(9).cm, byNo(9).kg], [196, 108]);
+});
+
+test('유니폼의 색은 모두 #RRGGBB 다(사람 모델에 칠할 때 그대로 읽는다)', () => {
+  for (const kit of [...KITS, ...GK_KITS])
+    for (const [key, value] of Object.entries(kit))
+      if (typeof value === 'string' && value.startsWith('#')) assert.match(value, /^#[0-9A-F]{6}$/i, `${kit.id}.${key}`);
+});

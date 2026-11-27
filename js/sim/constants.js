@@ -1,5 +1,5 @@
 // 규칙에 쓰는 숫자. 여기를 바꾸면 같은 입력의 결과가 달라지므로 RULES_VERSION 을 올린다.
-export const RULES_VERSION = 8;
+export const RULES_VERSION = 10;
 export const TICK = 1 / 60;
 
 export const LANES = 5;
@@ -10,9 +10,9 @@ export const MOVE_TICKS = 17;   // 옆 레인까지 0.28초. 어떤 기술이 �
 export const JUMP_TICKS = 36;   // 0.6초
 export const JUMP_H = 1.15;
 
-export const SPEED0 = 12.1;
+export const SPEED0 = 13.3;
 export const SPEED_MAX = 28.6;
-export const SPEED_K = 850;     // 이 거리(m)쯤에서 오름폭의 63%에 닿는다. 500m 에서 초속 19.4m, 1000m 에서 23.5m
+export const SPEED_K = 700;     // 이 거리(m)쯤에서 오름폭의 63%에 닿는다. 500m 에서 초속 21.1m, 1000m 에서 24.9m
 export const speedAt = dist => SPEED0 + (SPEED_MAX - SPEED0) * (1 - Math.exp(-dist / SPEED_K));
 
 export const HIT_DX = 0.33;     // 몸 상자 반폭의 합. 보이는 몸의 60%

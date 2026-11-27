@@ -1,4 +1,5 @@
 // 내 선수와 공. 규칙이 정한 자리(run.x, run.y)에 세우고, 달리기 위에 동작을 얹는다.
+// 자세는 보이지 않는 관절 몸이 계산하고, 사람 모델이 불러와지면 그 몸이 관절 몸을 따라 움직인다. 그 전에는 관절 몸이 보인다.
 import * as THREE from './three.js';
 import { TICK, BALL_SPEED, BOOST_TICKS, BOOST_REACH, SPEED0, SPEED_MAX } from '../sim/constants.js';
 import { kitById } from '../data/kits.js';
@@ -7,9 +8,11 @@ import { pickSkill } from '../data/skills.js';
 import { FACE_COLORS } from '../data/face-colors.js';
 import { makeRig } from './rig.js';
 import { flatHead, loadFace, faceCamera } from './heads.js';
+import { loadPlayer, createBody } from './player-model.js';
 import { apply, blend, layer, mirror, smooth } from './anim.js';
 import { RUN, CLIPS, BALL_R, KICK_AT } from './clips-hero.js';
 import { settle } from './clip-tools.js';
+import { STRIKE } from './clips-run.js';
 
 const FADE = 0.1;          // 동작이 바뀔 때 앞 자세에서 넘어오는 시간(초)
 const BOOST = BOOST_TICKS * TICK, FLIGHT = BOOST_REACH / BALL_SPEED;   // 아이템 4초, 그중 공이 날아가는 시간
@@ -50,7 +53,18 @@ export function create(ctx) {
   ctx.scene.add(ball);
   ctx.ball = ball;         // 효과 조각이 공의 자리를 읽는다
 
+  // 아이템 동안 공이 불꽃볼이 된다: 효과 조각이 불꽃을 피울 자리(두 발, 마지막이 공)와 세기(heat), 그리고 공을 따라가며 둘레를 비추는 주황 빛.
+  // 빛은 처음부터 두어야 한다. 빛의 수가 바뀌면 모든 재질의 셰이더를 다시 만드느라 화면이 멈춘다
+  const FLAMES = ['anL', 'anR'];
+  const burn = { heat: 0, pts: Array.from({ length: FLAMES.length + 1 }, () => new THREE.Vector3()) };
+  ctx.burn = burn;
+  const fire = new THREE.PointLight('#ff7a1a', 0, 9, 2);
+  ctx.scene.add(fire);
+
   let rig = null, worn = {}, flat = false;   // flat: 지금 납작한 사진 머리를 쓰고 있다
+  let loaded = null, body = null, reach = 1;   // 사람 모델과 그 몸, 다리 길이의 비(모델 / 관절 몸)
+  let beat = null;   // 실제 사람의 달리기에서 공을 모는 발이 가장 앞에 나온 시각과 그때의 관절 몸 걸음(라디안)
+  loadPlayer().then(l => { loaded = l; worn = {}; dress(); }, () => {});   // 못 받으면 관절 몸으로 달린다
   let clip = null;         // { def, flip, t0 }: 지금 얹혀 있는 동작
   let from = null, fadeAt = 0, last = null;
   let shot = null;         // { at, dist }: 공을 차기 시작한 시각과 그때의 거리. 아이템이 끝날 때까지 공은 발밑에 없다
@@ -60,15 +74,19 @@ export function create(ctx) {
 
   // 선수가 바뀌면 몸을 새로 만들고, 유니폼만 바뀌면 다시 칠한다
   function dress() {
-    const { hero, kit } = ctx.look;
+    const { hero, kit } = ctx.look, who = byNo(hero);
     if (worn.hero !== hero) {
       if (rig) { ctx.scene.remove(rig.root); rig.dispose(); }
-      const who = byNo(hero);
       rig = makeRig({ kit: kitById(kit), no: hero, name: who.name, gk: who.pos === 'GK', long: true, ...FACE_COLORS[hero] });
       ctx.scene.add(rig.root);
       flat = false;
       loadFace(hero, true).catch(() => {});   // 못 받으면 얼굴 없는 머리로 둔다
+      if (body) { ctx.scene.remove(body.root, body.anchor); body.dispose(); body = null; }
     } else if (worn.kit !== kit) rig.dress({ kit: kitById(kit) });
+    if (loaded && !body) { body = createBody(loaded); ctx.scene.add(body.root, body.anchor); flat = false; }
+    // 달리기는 실제 사람의 동작을 쓰고 걸음은 관절 몸의 걸음에 맞춘다: 공을 모는 발이 앞에 나오는 박자가 같아야 공이 발에 닿는다
+    if (body) beat = LEFT_FOOTED.includes(hero) ? { at: body.footForward('run', 'Left'), phase: STRIKE } : { at: body.footForward('run', 'Right'), phase: STRIKE + Math.PI };
+    if (body) body.dress({ kit: kitById(kit), no: hero, name: who.name, cm: who.cm, kg: who.kg, ...FACE_COLORS[hero] });
     worn = { hero, kit };
   }
 
@@ -76,12 +94,24 @@ export function create(ctx) {
   const eye = new THREE.Vector3(), fwd = new THREE.Vector3(), headQ = new THREE.Quaternion();
   const was = { x: 0, z: 0, dist: 0 }, axis = new THREE.Vector3(), turn = new THREE.Quaternion();   // 공이 앞 프레임에 있던 자리와, 굴리는 데 쓰는 축·회전
   function turnHead() {
+    if (body) return turnPhoto();
     const head = rig.j.head;
     head.getWorldPosition(eye).sub(ctx.camera.position).negate().normalize();
     const toward = fwd.set(0, 0, -1).applyQuaternion(head.getWorldQuaternion(headQ)).dot(eye);
     const photo = (flat ? toward > 0 : toward > 0.2) && flatHead(worn.hero, rig.headR, true);
     if (!!photo !== flat) { rig.setHead(photo || null); flat = !!photo; }
     if (flat) faceCamera(head, ctx.camera);
+  }
+
+  // 사람 모델: 얼굴이 카메라 쪽을 향하면 모델의 머리를 감추고 그 자리에 사진 머리를 카메라 쪽으로 세운다
+  const HEAD_R = 0.12, toCam = new THREE.Vector3();   // 사진 머리의 크기를 정하는 머리 반지름(m)
+  function turnPhoto() {
+    body.head.getWorldPosition(eye);
+    toCam.copy(ctx.camera.position).sub(eye).normalize();
+    const toward = fwd.set(0, 0, 1).applyQuaternion(body.head.getWorldQuaternion(headQ)).dot(toCam);   // 모델의 얼굴은 머리 뼈의 +Z 쪽
+    const next = (flat ? toward > 0 : toward > 0.2) && flatHead(worn.hero, HEAD_R, true);
+    if (!!next !== flat) { body.setFace(next || null); flat = !!next; }
+    body.placeFace(ctx.camera);
   }
 
   function play(def, flip, t0) {
@@ -107,7 +137,10 @@ export function create(ctx) {
 
     update(run, alpha) {
       // 첫 화면은 선수 카드가 대신한다. 달리기 시작하면 그 자리에 나타난다
-      rig.root.visible = ball.visible = ctx.mode !== 'home';
+      ball.visible = ctx.mode !== 'home';
+      rig.root.visible = ball.visible && !body;
+      if (body) body.root.visible = ball.visible;
+      if (body) body.anchor.visible = ball.visible;
       if (ctx.mode === 'home') return;
       const t = ctx.now, dist = run.pdist + (run.dist - run.pdist) * alpha;
       const x = run.px + (run.x - run.px) * alpha;
@@ -117,11 +150,19 @@ export function create(ctx) {
       // 빠를수록 걸음이 커진다. 왼발잡이는 좌우를 뒤집어 왼발로 공을 몬다(반 바퀴 밀어 어느 다리가 앞인지는 그대로 둔다)
       const phase = stride(t, dist) + step0, pace = Math.min(1, Math.max(0, (run.speed - SPEED0) / (SPEED_MAX - SPEED0)));
       const base = LEFT_FOOTED.includes(worn.hero) ? mirror(RUN(phase + Math.PI, pace)) : RUN(phase, pace);
-      let pose = base;
+      let pose = base, real = 1;   // real: 사람 모델이 관절 몸을 따르는 정도. 동작이 없으면 실제 사람의 달리기를 쓴다
       if (clip) {
         const u = (t - clip.t0) / clip.def.dur;
         if (u >= 1 && !clip.def.hold) clip = null;
         else pose = layer(base, clip.def, Math.min(1, u), clip.flip);
+      }
+      if (body && beat) {
+        const u = clip ? Math.min(1, (t - clip.t0) / clip.def.dur) : 1;
+        real = clip ? smooth((t - clip.t0) / FADE) * (clip.def.hold ? 1 : smooth((1 - u) / 0.3)) : 0;
+        if (real < 1) {
+          const run = body.clips.get('run'), turnTo = (((phase - beat.phase) / (Math.PI * 2)) % 1 + 1) % 1;
+          body.mocap('run', (beat.at + turnTo * run.duration) % run.duration);
+        }
       }
       if (from) {
         const k = (t - fadeAt) / FADE;
@@ -132,11 +173,24 @@ export function create(ctx) {
       last = pose;
       apply(rig, pose);
       rig.root.position.set(x, y, 0);
+      if (body) reach = body.follow(rig, real);
       turnHead();
+
+      // 아이템이 시작될 때와 끝날 때 서서히 붙고 꺼진다. 불이 일렁이는 만큼 빛도 흔들린다
+      const heat = run.boost > 0 ? Math.min(1, (BOOST_TICKS - run.boost) / 10, run.boost / 25) : 0;
+      const flicker = 0.75 + 0.25 * Math.sin(t * 31) * Math.sin(t * 17 + 1.3);
+      burn.heat = heat; burn.flicker = flicker;
+      fire.intensity = heat * 14 * flicker;
+      ball.material.emissive.setRGB(1, 0.3, 0.04).multiplyScalar(heat * (0.7 + 0.3 * flicker));   // 달아오른 공
+      if (heat > 0) {
+        rig.root.updateMatrixWorld(true);
+        FLAMES.forEach((name, i) => rig.j[name].getWorldPosition(burn.pts[i]));
+      }
       ctx.blob(x, 0, 0.42 - 0.12 * (y + Math.max(0, pose.root.y)));   // 동작이 몸을 띄울 때도 그림자가 작아진다
 
+      // 사람 모델은 다리가 길어 발이 그만큼 멀리 닿으므로 공의 자리도 그 비로 늘린다
       const b = pose.ball;
-      let bx = x + b.x, by = b.y, bz = b.z;
+      let bx = x + b.x * reach, by = b.y, bz = b.z * reach;
       if (shot) {
         // 발을 떠난 공은 몸동작을 따르지 않고 선수 앞을 곧게 간다
         const tau = t - shot.at, ahead = shotAhead(tau, dist - shot.dist), free = Math.min(1, ahead);
@@ -149,6 +203,8 @@ export function create(ctx) {
         bx += (taken.x - bx) * k; by += (BALL_R - by) * k; bz += (taken.z - bz) * k;
       }
       ball.position.set(bx, by, bz);
+      burn.pts[FLAMES.length].set(bx, by, bz);
+      fire.position.set(bx, by + 0.6, bz);
       // 공은 땅 위를 움직인 만큼 그 방향으로 구른다. 달린 만큼 땅이 뒤로 가므로 그것도 움직인 거리다. 판이 바뀌어 자리가 건너뛴 프레임은 넘긴다
       const dx = bx - was.x, dz = bz - was.z - (dist - was.dist), far = Math.hypot(dx, dz);
       if (far > 1e-6 && far < 3) ball.quaternion.premultiply(turn.setFromAxisAngle(axis.set(dz / far, 0, -dx / far), far / BALL_R));

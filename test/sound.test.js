@@ -27,7 +27,7 @@ test('소리를 낼 수 없는 곳에서도 조용히 넘어간다', () => {
 });
 
 test('이름마다 소리가 난다', () => {
-  assert.deepEqual([...SOUNDS].sort(), ['beat', 'coin', 'crowd', 'hit', 'item', 'jump', 'kick', 'knock', 'skill', 'touch', 'whistle']);
+  assert.deepEqual([...SOUNDS].sort(), ['beat', 'charge', 'clue', 'coin', 'crowd', 'hit', 'item', 'jump', 'kick', 'knock', 'reveal', 'skill', 'touch', 'whistle']);
   for (const name of SOUNDS) {
     const { AC, log } = fakeAudio(), s = createSound(AC);
     s.play(name);

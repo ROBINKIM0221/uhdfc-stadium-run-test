@@ -4,6 +4,7 @@ import { createRun, step } from './sim/run.js';
 import { clampSteps, MAX_STEPS } from './loop.js';
 import { byNo } from './data/players.js';
 import { createView } from './render/view.js';
+import { loadPlayer, loadFar } from './render/player-model.js';
 import { bindInput } from './ui/input.js';
 import { createSound } from './ui/sound.js';
 import { createStore } from './ui/store.js';
@@ -154,7 +155,10 @@ function boot() {
     view.preload();
     const trial = createRun(1);
     step(trial, []);
-    if (mode === 'home') view.warm(trial, run);
+    const warm = () => { if (mode === 'home') view.warm(trial, run); };
+    warm();
+    // 사람 모델은 늦게 온다. 오면 그 몸과 재질로 한 번 더 그려 둔다
+    Promise.all([loadPlayer(), loadFar()]).then(warm, () => {});
   }));
 
   if (params.get('debug') === '1') window.__dbg = {
